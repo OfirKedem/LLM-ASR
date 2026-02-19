@@ -8,7 +8,11 @@ from config import Config
 
 
 class AcousticModel:
-    def __init__(self, model_name: str | None = None, device: str | None = None):
+    def __init__(self, 
+        model_name: str | None = None, 
+        device: str | None = None,
+        sample_rate: int = 16_000,
+        normalize_tokens: bool = False):
         cfg = Config()
         model_name = model_name or cfg.am_model_name
         self.device = device or cfg.device
@@ -22,6 +26,7 @@ class AcousticModel:
         self.idx_to_char = {v: k for k, v in vocab.items()}
         self.blank_idx = self.processor.tokenizer.pad_token_id  # CTC blank
         self.space_idx = vocab.get("|", vocab.get(" ", None))
+        self.normalize_tokens = normalize_tokens
 
     # ------------------------------------------------------------------ #
     #  CTC emissions                                                      #
@@ -146,6 +151,10 @@ class AcousticModel:
                 best_t = t
 
         end_frame = start_frame + best_t + 1
+        
+        if self.normalize_tokens: # midigates bias towards shorter tokens
+            best_log_prob = best_log_prob / U
+        
         return end_frame, float(best_log_prob)
 
 

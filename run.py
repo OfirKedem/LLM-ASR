@@ -136,7 +136,7 @@ def test():
     cfg.alpha = 0.0626
     cfg.beta = 0.5190
 
-    am = AcousticModel(cfg.am_model_name, cfg.device)
+    am = AcousticModel(cfg.am_model_name, cfg.device, normalize_tokens=True)
     lm = LanguageModel(cfg.lm_model_name, cfg.device)
     dec = LLMGuidedDecoder(am, lm, cfg)
 
