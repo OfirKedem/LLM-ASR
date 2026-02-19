@@ -1,0 +1,10 @@
+.vscode/
+.cache/
+data/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pdf
