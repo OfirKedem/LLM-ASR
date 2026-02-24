@@ -153,7 +153,7 @@ class AcousticModel:
         end_frame = start_frame + best_t + 1
         
         if self.normalize_tokens: # midigates bias towards shorter tokens
-            best_log_prob = best_log_prob / U
+            best_log_prob = best_log_prob / (U**2)
         
         return end_frame, float(best_log_prob)
 
@@ -188,12 +188,18 @@ def test():
     print(f"Reference      : {ref!r}\n")
 
     # 3. Align first word: "go"
-    end1, lp1 = am.align_token(" go", 0, emissions)
-    print(f'align_token(" go", start=0) -> end_frame={end1}, log_prob={lp1:.2f}')
+    end1_g, lp1_g = am.align_token("G", 0, emissions)
+    print(f'align_token("G", start=0) -> end_frame={end1_g}, log_prob={lp1_g:.4f}')
+
+    end1, lp1 = am.align_token("go", 0, emissions)
+    print(f'align_token("go", start=0) -> end_frame={end1}, log_prob={lp1:.4f}')
 
     # 4. Align second word: "do"
     end2, lp2 = am.align_token(" do", end1, emissions)
     print(f'align_token(" do", start={end1}) -> end_frame={end2}, log_prob={lp2:.2f}')
+
+    d_end2, d_lp2 = am.align_token(" d", end1, emissions)
+    print(f'align_token(" d", start={end1}) -> end_frame={d_end2}, log_prob={d_lp2:.2f}')
 
     # 5. Align third word: "you"
     end3, lp3 = am.align_token(" you", end2, emissions)

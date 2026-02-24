@@ -1,4 +1,4 @@
-"""Shared helpers for loading real test samples from data/84/."""
+"""Shared helpers for loading real test samples from data/84/ and data/61/."""
 
 from pathlib import Path
 import torch
@@ -7,10 +7,15 @@ import soundfile as sf
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 
-# Available chapters
+# Available data folders under DATA_DIR
+DATA_FOLDERS = ("84", "61")
+
+# Available chapters per folder: (folder, chapter_id) -> path
 CHAPTERS = {
-    "121123": DATA_DIR / "84" / "121123",
-    "121550": DATA_DIR / "84" / "121550",
+    ("84", "121123"): DATA_DIR / "84" / "121123",
+    ("84", "121550"): DATA_DIR / "84" / "121550",
+    ("61", "70968"): DATA_DIR / "61" / "70968",
+    ("61", "70970"): DATA_DIR / "61" / "70970",
 }
 
 
@@ -28,6 +33,7 @@ def _parse_trans(trans_path: Path) -> dict[str, str]:
 def load_test_sample(
     chapter: str = "121123",
     idx: int = 0,
+    folder: str = "84",
 ) -> tuple[torch.Tensor, int, str]:
     """Return (waveform, sample_rate, reference_text) for one utterance.
 
@@ -37,9 +43,11 @@ def load_test_sample(
         Chapter id – "121123" (short sentences) or "121550" (longer).
     idx : int
         Utterance index within the chapter (0-based).
+    folder : str
+        Data folder under DATA_DIR – "84" or "61".
     """
-    chapter_dir = CHAPTERS[chapter]
-    trans_path = chapter_dir / f"84-{chapter}.trans.txt"
+    chapter_dir = CHAPTERS[(folder, chapter)]
+    trans_path = chapter_dir / f"{folder}-{chapter}.trans.txt"
     mapping = _parse_trans(trans_path)
     utt_ids = sorted(mapping.keys())
     utt_id = utt_ids[idx]
@@ -53,10 +61,11 @@ def load_test_sample(
 def load_chapter_samples(
     chapter: str = "121123",
     max_samples: int | None = None,
+    folder: str = "84",
 ) -> list[tuple[torch.Tensor, int, str]]:
     """Load all (or first *max_samples*) utterances from a chapter."""
-    chapter_dir = CHAPTERS[chapter]
-    trans_path = chapter_dir / f"84-{chapter}.trans.txt"
+    chapter_dir = CHAPTERS[(folder, chapter)]
+    trans_path = chapter_dir / f"{folder}-{chapter}.trans.txt"
     mapping = _parse_trans(trans_path)
     utt_ids = sorted(mapping.keys())
     if max_samples is not None:

@@ -133,15 +133,15 @@ def test():
     cfg.beam_width = 5
     cfg.top_k = 5000
     cfg.max_steps = 15
-    cfg.alpha = 0.0626
-    cfg.beta = 0.5190
+    cfg.alpha = 0.01
+    cfg.beta = 0.1
 
-    am = AcousticModel(cfg.am_model_name, cfg.device, normalize_tokens=True)
+    am = AcousticModel(cfg.am_model_name, cfg.device, normalize_tokens=False)
     lm = LanguageModel(cfg.lm_model_name, cfg.device)
     dec = LLMGuidedDecoder(am, lm, cfg)
 
     # 1. Single file
-    waveform, sr, ref = load_test_sample(chapter="121123", idx=27)
+    waveform, sr, ref = load_test_sample(chapter="121123", idx=0)
     processed, sr = preprocess(waveform=waveform, sr=sr, cfg=cfg, use_vad=False)
     print(f"Audio duration: {processed.shape[-1]/sr:.2f}s")
     hyp = dec.decode(processed, verbose=True)

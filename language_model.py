@@ -79,6 +79,20 @@ class LanguageModel:
         topk = torch.topk(log_probs, k=min(k, len(self.valid_token_ids)))
         return topk.indices, topk.values, new_kv
 
+    @torch.no_grad()
+    def top_k_from_text(
+        self,
+        prefix_text: str,
+        k: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return (token_ids, log_probs) for top-*k* valid tokens given text prefix.
+
+        Tokenizes *prefix_text* and runs the model on the full sequence (no KV cache).
+        """
+        prefix_ids = self.tokenizer.encode(prefix_text, add_special_tokens=False)
+        ids, log_probs, _ = self.top_k(prefix_ids=prefix_ids, k=k, past_key_values=None)
+        return ids, log_probs
+
     def decode_token(self, token_id: int) -> str:
         """Decode a single token id to its text representation."""
         return self.tokenizer.decode([token_id])

@@ -108,22 +108,26 @@ class LLMGuidedDecoder:
 
         for step in range(1, max_steps + 1):
             candidates: list[Hypothesis] = []  # line 4 in Algorithm 1
+            # print the beam
+            print(f"beam: {beam}")
 
             # Group hypotheses by prefix to avoid redundant LLM calls
             # TODO: figure out later 
             prefix_groups: dict[tuple, list[Hypothesis]] = {}
             for hyp in beam:
                 if hyp.finished:
-                    candidates.append(hyp)
+                    # candidates.append(hyp)
                     continue
                 key = tuple(hyp.token_ids)
                 prefix_groups.setdefault(key, []).append(hyp)
 
             for key, hyps in prefix_groups.items():
                 rep = hyps[0]  # representative hypothesis
-                tok_ids, lm_lps, new_kv = self.lm.top_k(
-                    rep.token_ids, K, rep.kv_cache
-                )
+                # tok_ids, lm_lps, new_kv = self.lm.top_k(
+                #     rep.token_ids, K, rep.kv_cache
+                # )
+                tok_ids, lm_lps = self.lm.top_k_from_text(rep.text, K)
+                new_kv = None
 
                 # Check EOS probability for stopping criterion (i)
                 eos_lp = float("-inf")
@@ -154,6 +158,7 @@ class LLMGuidedDecoder:
                                 finished=True,
                             )
                             candidates.append(fin)
+                            print(f"fin: {fin}, lm_lp: {lm_lp}")
                             continue
 
                         token_text = self.lm.decode_token(tid)
@@ -169,6 +174,18 @@ class LLMGuidedDecoder:
                         ):
                             continue
 
+                        if token_text in [" y", " you"] and hyp.text in ['Go dO', "go do"]:
+                            print("--------------------------------")
+                            print(f"token_text: {token_text}, am_lp: {am_lp}, lm_lp: {lm_lp}")
+                            print(f"hyp.score: {hyp.score}, alpha: {alpha}, beta: {beta}")
+                            print(f"new_score: {hyp.score + am_lp + alpha * lm_lp + beta}")
+                            print(f"hyp.token_ids: {hyp.token_ids}")
+                            print(f"hyp.text: {hyp.text}")
+                            print(f"hyp.last_frame: {hyp.last_frame}")
+                            print(f"hyp.score: {hyp.score}")
+                            print(f"hyp.finished: {hyp.finished}")
+                            print(f"tid: {tid}")
+                        
                         new_score = hyp.score + am_lp + alpha * lm_lp + beta # line 9 in Algorithm 1
                         new_hyp = Hypothesis(
                             token_ids=hyp.token_ids + [tid],
