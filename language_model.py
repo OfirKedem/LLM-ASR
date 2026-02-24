@@ -7,7 +7,9 @@ from config import Config
 
 
 class LanguageModel:
-    def __init__(self, model_name: str | None = None, device: str | None = None):
+    def __init__(self, model_name: str | None = None,
+                       device: str | None = None,
+                       remove_space: bool = False):
         cfg = Config()
         model_name = model_name or cfg.lm_model_name
         self.device = device or cfg.device
@@ -19,7 +21,7 @@ class LanguageModel:
         self.eos_token_id = self.tokenizer.eos_token_id
         self.space_token_id = self.tokenizer.encode(" ")[0]
         self.vocab_size = self.tokenizer.vocab_size
-
+        self.remove_space = remove_space
         # Pre-compute mask of valid (alphabetic + space only) token ids
         self.valid_mask = self._build_valid_mask()
         self.valid_token_ids = self.valid_mask.nonzero(as_tuple=True)[0].tolist()
@@ -40,7 +42,8 @@ class LanguageModel:
                 mask[idx] = True
         # Always keep EOS so the decoder can terminate
         mask[self.eos_token_id] = True
-        mask[self.space_token_id] = False
+        if self.remove_space:
+            mask[self.space_token_id] = False
         return mask
 
     # ------------------------------------------------------------------ #

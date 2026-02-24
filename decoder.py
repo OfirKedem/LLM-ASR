@@ -31,11 +31,12 @@ class LLMGuidedDecoder:
         am: AcousticModel,
         lm: LanguageModel,
         cfg: Config | None = None,
+        top_k_from_text: bool = False,
     ):
         self.am = am
         self.lm = lm
         self.cfg = cfg or Config()
-
+        self.top_k_from_text = top_k_from_text
     # ------------------------------------------------------------------ #
     #  Stopping criteria                                                  #
     # ------------------------------------------------------------------ #
@@ -123,11 +124,13 @@ class LLMGuidedDecoder:
 
             for key, hyps in prefix_groups.items():
                 rep = hyps[0]  # representative hypothesis
-                # tok_ids, lm_lps, new_kv = self.lm.top_k(
-                #     rep.token_ids, K, rep.kv_cache
-                # )
-                tok_ids, lm_lps = self.lm.top_k_from_text(rep.text, K)
-                new_kv = None
+                
+                
+                if self.top_k_from_text:
+                    tok_ids, lm_lps = self.lm.top_k_from_text(rep.text, K)
+                    new_kv = None
+                else:
+                    tok_ids, lm_lps, new_kv = self.lm.top_k(rep.token_ids, K, rep.kv_cache)
 
                 # Check EOS probability for stopping criterion (i)
                 eos_lp = float("-inf")
@@ -173,18 +176,6 @@ class LLMGuidedDecoder:
                             token_text, am_lp, char_count
                         ):
                             continue
-
-                        if token_text in [" y", " you"] and hyp.text in ['Go dO', "go do"]:
-                            print("--------------------------------")
-                            print(f"token_text: {token_text}, am_lp: {am_lp}, lm_lp: {lm_lp}")
-                            print(f"hyp.score: {hyp.score}, alpha: {alpha}, beta: {beta}")
-                            print(f"new_score: {hyp.score + am_lp + alpha * lm_lp + beta}")
-                            print(f"hyp.token_ids: {hyp.token_ids}")
-                            print(f"hyp.text: {hyp.text}")
-                            print(f"hyp.last_frame: {hyp.last_frame}")
-                            print(f"hyp.score: {hyp.score}")
-                            print(f"hyp.finished: {hyp.finished}")
-                            print(f"tid: {tid}")
                         
                         new_score = hyp.score + am_lp + alpha * lm_lp + beta # line 9 in Algorithm 1
                         new_hyp = Hypothesis(

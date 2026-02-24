@@ -12,7 +12,7 @@ class AcousticModel:
         model_name: str | None = None, 
         device: str | None = None,
         sample_rate: int = 16_000,
-        normalize_tokens: bool = False):
+        normalize_tokens: float = None):
         cfg = Config()
         model_name = model_name or cfg.am_model_name
         self.device = device or cfg.device
@@ -152,8 +152,8 @@ class AcousticModel:
 
         end_frame = start_frame + best_t + 1
         
-        if self.normalize_tokens: # midigates bias towards shorter tokens
-            best_log_prob = best_log_prob / (U**2)
+        if self.normalize_tokens is not None: # midigates bias towards shorter tokens
+            best_log_prob = best_log_prob / (U**self.normalize_tokens)
         
         return end_frame, float(best_log_prob)
 
