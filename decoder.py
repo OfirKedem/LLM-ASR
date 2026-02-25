@@ -110,14 +110,14 @@ class LLMGuidedDecoder:
         for step in range(1, max_steps + 1):
             candidates: list[Hypothesis] = []  # line 4 in Algorithm 1
             # print the beam
-            print(f"beam: {beam}")
+            if verbose: print(f"beam: {beam}")
 
             # Group hypotheses by prefix to avoid redundant LLM calls
             # TODO: figure out later 
             prefix_groups: dict[tuple, list[Hypothesis]] = {}
             for hyp in beam:
                 if hyp.finished:
-                    # candidates.append(hyp)
+                    candidates.append(hyp)
                     continue
                 key = tuple(hyp.token_ids)
                 prefix_groups.setdefault(key, []).append(hyp)
@@ -155,13 +155,13 @@ class LLMGuidedDecoder:
                             fin = Hypothesis(
                                 token_ids=hyp.token_ids[:],
                                 text=hyp.text,
-                                last_frame=hyp.last_frame,
+                                last_frame=max(hyp.last_frame - 1, 0),
                                 score=hyp.score + alpha * lm_lp,
                                 kv_cache=None,
                                 finished=True,
                             )
                             candidates.append(fin)
-                            print(f"fin: {fin}, lm_lp: {lm_lp}")
+                            if verbose: print(f"fin: {fin}, lm_lp: {lm_lp}")
                             continue
 
                         token_text = self.lm.decode_token(tid)
@@ -202,6 +202,7 @@ class LLMGuidedDecoder:
                       f"text={best.text!r}")
 
             if all(h.finished for h in beam):
+                print("All hypotheses finished. Exiting loop.")
                 break
 
         beam.sort(key=lambda h: h.score, reverse=True)
