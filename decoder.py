@@ -5,15 +5,22 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 import os
 import csv
 import time
 import random
+
+import numpy as np
+import matplotlib.pyplot as plt
 import torch
 
 from config import Config
 from acoustic_model import AcousticModel
 from language_model import LanguageModel
+
+
+VISUALIZATION_DIR = Path(__file__).resolve().parent / "visualization"
 
 
 @dataclass
@@ -122,6 +129,41 @@ class LLMGuidedDecoder:
 
         emissions = self.am.get_emissions(waveform)  # (T, C)
         T = emissions.shape[0]
+        print(f"Emissions shape: {emissions.shape}")
+
+        # Save emission matrix visualization (similar to clasic_asr.py)
+        if verbose:
+            try:
+                VISUALIZATION_DIR.mkdir(exist_ok=True)
+                emissions_np = emissions.numpy()
+                probs = np.exp(emissions_np)  # log-softmax -> prob
+                n_frames, n_tokens = probs.shape
+                sorted_indices = sorted(
+                    range(n_tokens), key=lambda i: self.am.idx_to_char.get(i, "?")
+                )
+                probs_ordered = probs[:, sorted_indices]
+                vocab_labels = [self.am.idx_to_char.get(i, "?") for i in sorted_indices]
+
+                fig, ax = plt.subplots(
+                    figsize=(14, max(6, n_tokens * 0.25))
+                )
+                im = ax.imshow(
+                    probs_ordered.T, aspect="auto", origin="lower", cmap="viridis"
+                )
+                ax.set_xlabel("Time (frame)")
+                ax.set_ylabel("Token")
+                ax.set_yticks(range(n_tokens))
+                ax.set_yticklabels(vocab_labels)
+                ax.set_title("Emission matrix (P(token | frame))")
+                ax.set_xlim(0, 25)
+                plt.colorbar(im, ax=ax, label="Probability")
+                plt.tight_layout()
+                out_path = VISUALIZATION_DIR / "emission_matrix.png"
+                plt.savefig(out_path, dpi=150)
+                plt.close()
+                print(f"Emission matrix saved to {out_path}")
+            except Exception as e:
+                print(f"Warning: failed to save emission matrix: {e}")
 
         beam: list[Hypothesis] = [Hypothesis()]  # line 2 in Algorithm 1
         beam_log_rows: list[dict] = []
@@ -142,12 +184,11 @@ class LLMGuidedDecoder:
             for key, hyps in prefix_groups.items():
                 rep = hyps[0]  # representative hypothesis
                 
-                
                 if self.top_k_from_text:
                     tok_ids, lm_lps = self.lm.top_k_from_text(rep.text, K)
                     new_kv = None
                 else:
-                    tok_ids, lm_lps, new_kv = self.lm.top_k(rep.token_ids, K, rep.kv_cache)
+                    tok_ids, lm_lps, new_kv = self.lm.top_k(rep.token_ids, K, None) # rep.kv_cache)
 
                 # Check EOS probability for stopping criterion (i)
                 eos_lp = float("-inf")
@@ -172,7 +213,7 @@ class LLMGuidedDecoder:
                             fin = Hypothesis(
                                 token_ids=hyp.token_ids[:],
                                 text=hyp.text,
-                                last_frame=max(hyp.last_frame - 1, 0),
+                                last_frame=hyp.last_frame,
                                 score=hyp.score + alpha * lm_lp,
                                 kv_cache=None,
                                 finished=True,
@@ -200,7 +241,7 @@ class LLMGuidedDecoder:
                         new_hyp = Hypothesis(
                             token_ids=hyp.token_ids + [tid],
                             text=hyp.text + token_text,
-                            last_frame=end_frame,
+                            last_frame=end_frame+1,
                             score=new_score,
                             kv_cache=new_kv,
                             finished=False,
@@ -208,7 +249,6 @@ class LLMGuidedDecoder:
                             last_lm_lp=lm_lp,
                         )
                         candidates.append(new_hyp) # line 10 in Algorithm 1
-                        if verbose and random.random() < 0.0001: print(f"new_hyp: {new_hyp}")
 
             if not candidates:
                 break
@@ -237,18 +277,17 @@ class LLMGuidedDecoder:
             if verbose:
                 print(f"beam: {beam}")
 
-            if verbose:
-                best = beam[0]
-                print(f"  step {step:3d}  score={best.score:8.2f}  "
-                      f"frame={best.last_frame:4d}/{T}  "
-                      f"text={best.text!r}")
+            best = beam[0]
+            print(f"  step {step:3d}  score={best.score:8.2f}  "
+                    f"frame={best.last_frame:4d}/{T}  "
+                    f"text={best.text!r}")
 
             if all(h.finished for h in beam):
                 print("All hypotheses finished. Exiting loop.")
                 break
 
         # Save beam evolution to CSV (one file per decode) without kv_cache
-        if beam_log_rows:
+        if beam_log_rows and verbose:
             try:
                 os.makedirs("beam_logs", exist_ok=True)
                 timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -272,8 +311,7 @@ class LLMGuidedDecoder:
                     writer.writeheader()
                     writer.writerows(beam_log_rows)
             except Exception as e:
-                if verbose:
-                    print(f"Warning: failed to write beam log CSV: {e}")
+                print(f"Warning: failed to write beam log CSV: {e}")
 
         beam.sort(key=lambda h: h.score, reverse=True)
         return beam[0]

@@ -1,30 +1,29 @@
-# W&B sweep for ASR decoder hyperparameters.
-# Usage:
-#   1. Set "input" in command to your data directory (or use env).
-#   2. wandb sweep sweep.yaml
-#   3. wandb agent <sweep_id>
-#
 program: run.py
 method: bayes
+
 metric:
   name: wer
   goal: minimize
+
 parameters:
-  max_steps:
-    values: [15, 30, 50, 100]
   beam_width:
-    values: [3, 5, 10]
+    values: [5, 10, 15]
   alpha:
     min: 0.0
-    max: 2.0
+    max: 3.0
   beta:
     min: 0.0
-    max: 2.0
+    max: 3.0
+
 command:
   - ${env}
   - ${interpreter}
   - ${program}
-  - data/84
-  - --wandb
+  - data/84/121123/
   - --max-samples
   - "5"
+  - --wandb
+  - --max-steps
+  - "1000"
+  - --topk
+  - "5000"

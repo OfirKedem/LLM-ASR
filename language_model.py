@@ -160,5 +160,60 @@ def test():
     print("\nDone.")
 
 
+def test_candidate_scoring_with_top_k():
+    """
+    Replicates the candidate probability logic by explicitly using the 
+    LanguageModel's top_k and top_k_from_text methods, keeping raw log-probs.
+    """
+    print("\n=== Candidate Log-Probability Test (Using top_k) ===\n")
+    
+    lm = LanguageModel(remove_space=True)
+    
+    # Define candidates and get their target token IDs
+    candidates = [" less", " l"]
+    candidate_ids = {cand: lm.tokenizer.encode(cand)[0] for cand in candidates}
+    
+    def print_log_probs_from_topk(topk_indices, topk_log_probs):
+        """Helper to extract and print target log-probabilities from top_k outputs."""
+        # Map token ID -> Log-Probability directly
+        log_prob_map = {
+            tid.item(): lp.item() 
+            for tid, lp in zip(topk_indices, topk_log_probs)
+        }
+        
+        results = {}
+        for cand, cid in candidate_ids.items():
+            # If the candidate ID is in the map, get its log-prob. 
+            # If not, it means the token was filtered out by `valid_mask` (-inf)
+            results[cand] = log_prob_map.get(cid, float('-inf'))
+            
+        # Print sorted results (highest log-prob first, meaning closest to 0)
+        for token, lp in sorted(results.items(), key=lambda x: x[1], reverse=True):
+            print(f"  '{token}': {lp:.4f}")
+
+    # ---------------------------------------------------------
+    # Test A: Input as Token IDs [1537, 287] -> "But in"
+    # ---------------------------------------------------------
+    input_ids_list = [33, 3843, 314, 406, 7597, 2320, 1565, 376, 9306, 20625, 3843, 1546, 2320, 36, 3563, 42149]
+    decoded_text = "-".join([lm.decode_token(tid) for tid in input_ids_list])
+    print(f"Test A: Input Token IDs {input_ids_list} (Decoded: '{decoded_text}')")
+    
+    # Use a large K to ensure we capture all valid candidates in the vocabulary
+    k_val = lm.vocab_size 
+    
+    # Call the top_k method
+    indices, log_probs, _ = lm.top_k(prefix_ids=input_ids_list, k=k_val)
+    print_log_probs_from_topk(indices, log_probs)
+
+    # ---------------------------------------------------------
+    # Test B: Input as Text "But in"
+    # ---------------------------------------------------------
+    input_text = "But in"
+    print(f"\nTest B: Input Text '{input_text}'")
+    
+    # Call the top_k_from_text method
+    indices_text, log_probs_text = lm.top_k_from_text(prefix_text=input_text, k=k_val)
+    print_log_probs_from_topk(indices_text, log_probs_text)
+
 if __name__ == "__main__":
-    test()
+    test_candidate_scoring_with_top_k()

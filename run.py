@@ -27,7 +27,7 @@ def decode_file(
     verbose: bool = False,
 ) -> str:
     """Preprocess and decode a single audio file."""
-    processed, sr = preprocess(path=audio_path, cfg=cfg, use_vad=False)
+    processed, sr = preprocess(path=audio_path, cfg=cfg, use_vad=True)
     hyp = decoder.decode(processed, verbose=verbose)
     return hyp.text
 
@@ -155,14 +155,40 @@ def main():
             if key in wandb.config:
                 setattr(cfg, key, wandb.config[key])
 
+    print(f"Config: {cfg}")
+
     am = AcousticModel(cfg.am_model_name, cfg.device)
-    lm = LanguageModel(cfg.lm_model_name, cfg.device)
-    dec = LLMGuidedDecoder(am, lm, cfg)
+    lm = LanguageModel(cfg.lm_model_name, cfg.device, remove_space=True)
+    dec = LLMGuidedDecoder(am, lm, cfg, top_k_from_text=True)
 
     inp = Path(args.input)
     if inp.is_file():
         hyp = decode_file(str(inp), dec, cfg, verbose=args.verbose)
-        print(f"Transcription: {normalize_for_eval(hyp)}")
+        hyp_n = normalize_for_eval(hyp)
+        print(f"Transcription: {hyp_n}")
+
+        # If possible, compute WER/CER for this single file and log to W&B
+        if args.wandb and wandb is not None:
+            try:
+                from test_utils import _parse_trans
+
+                # Look for a matching .trans.txt file in the same directory
+                trans_files = list(inp.parent.glob("*.trans.txt"))
+                if trans_files:
+                    mapping = _parse_trans(trans_files[0])
+                    utt_id = inp.stem
+                    if utt_id in mapping:
+                        ref_text = mapping[utt_id]
+                        ref_n = normalize_for_eval(ref_text)
+                        w = compute_wer(ref_text, hyp)
+                        c = compute_cer(ref_text, hyp)
+                        print(f"REF: {ref_n}")
+                        print(f"WER: {w:.2%}  CER: {c:.2%}")
+                        wandb.log({"wer": w, "cer": c})
+                        wandb.run.summary["wer"] = w
+                        wandb.run.summary["cer"] = c
+            except Exception as e:  # pragma: no cover - logging helper
+                print(f"Warning: failed to log single-file metrics to W&B: {e}")
     elif inp.is_dir():
         wer, cer = run_on_directory(
             inp, dec, cfg,
@@ -191,11 +217,11 @@ def test():
     cfg.top_k = 5000
     cfg.max_steps = 500
     cfg.alpha = 0.0999
-    cfg.beta = 0.0449
+    cfg.beta = 1
 
     am = AcousticModel(cfg.am_model_name, cfg.device, normalize_tokens=None)
     lm = LanguageModel(cfg.lm_model_name, cfg.device, remove_space=True)
-    dec = LLMGuidedDecoder(am, lm, cfg)
+    dec = LLMGuidedDecoder(am, lm, cfg, top_k_from_text=True)
 
     # 1. Single file
     waveform, sr, ref = load_test_sample(folder="84", chapter="121123", idx=1)
