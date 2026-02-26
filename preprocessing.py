@@ -114,7 +114,7 @@ def test():
 
     print("=== preprocessing test ===\n")
 
-    waveform, sr, ref = load_test_sample(chapter="121123", idx=0)
+    waveform, sr, ref = load_test_sample(folder="84", chapter="121123", idx=0)
     print(f"Reference text : {ref}")
     print(f"Sample rate    : {sr}")
     print(f"Original shape : {waveform.shape}  ({waveform.shape[-1]/sr:.2f}s)")
@@ -122,8 +122,8 @@ def test():
     padded = pad_silence(waveform, sr, 0.5)
     print(f"After padding  : {padded.shape}  ({padded.shape[-1]/sr:.2f}s)")
 
-    processed, out_sr = preprocess(waveform=waveform, sr=sr, use_vad=False)
-    print(f"Full pipeline  : {processed.shape}  ({processed.shape[-1]/out_sr:.2f}s)  [use_vad=False for test]")
+    processed, out_sr = preprocess(waveform=waveform, sr=sr, use_vad=True)
+    print(f"Full pipeline  : {processed.shape}  ({processed.shape[-1]/out_sr:.2f}s)  [use_vad=True for test]")
     print(f"Waveform stats : min={processed.min():.4f}  max={processed.max():.4f}  "
           f"mean={processed.mean():.4f}")
 
@@ -131,6 +131,15 @@ def test():
     assert processed.shape[0] == 1
     assert processed.shape[-1] > 0
     print("\nAll assertions passed.")
+
+    # save the processed waveform to a file
+    output_path = "processed_audio.wav"
+    # processed is expected to be [channel, samples], convert if necessary
+    # soundfile expects channels x samples or samples x channels for write
+    # Here, processed.shape should be (1, n), so squeeze the channel dimension
+    sf.write(output_path, processed.squeeze(), out_sr)
+    print(f"Processed waveform saved to {output_path}")
+    
 
 
 if __name__ == "__main__":

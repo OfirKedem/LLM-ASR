@@ -153,7 +153,9 @@ class AcousticModel:
         end_frame = start_frame + best_t + 1
         
         if self.normalize_tokens is not None: # midigates bias towards shorter tokens
-            best_log_prob = best_log_prob / (U**self.normalize_tokens)
+            # U - number of characters in the token
+            # self.normalize_tokens - exponent factor for normalization
+            best_log_prob = best_log_prob / (U*self.normalize_tokens)
         
         return end_frame, float(best_log_prob)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass, field
-
+import random
 import torch
 
 from config import Config
@@ -21,6 +21,21 @@ class Hypothesis:
     score: float = 0.0
     kv_cache: object = None
     finished: bool = False
+    last_am_lp: float = 0.0
+    last_lm_lp: float = 0.0
+
+    def __repr__(self):
+        # Don't show kv_cache in repr/printing
+        fields = [
+            f"token_ids={self.token_ids!r}",
+            f"text={self.text!r}",
+            f"last_frame={self.last_frame!r}",
+            f"score={self.score!r}",
+            f"finished={self.finished!r}",
+            f"last_am_lp={self.last_am_lp!r}",
+            f"last_lm_lp={self.last_lm_lp!r}",
+        ]
+        return f"Hypothesis({', '.join(fields)})"
 
 
 class LLMGuidedDecoder:
@@ -109,8 +124,6 @@ class LLMGuidedDecoder:
 
         for step in range(1, max_steps + 1):
             candidates: list[Hypothesis] = []  # line 4 in Algorithm 1
-            # print the beam
-            if verbose: print(f"beam: {beam}")
 
             # Group hypotheses by prefix to avoid redundant LLM calls
             # TODO: figure out later 
@@ -159,9 +172,11 @@ class LLMGuidedDecoder:
                                 score=hyp.score + alpha * lm_lp,
                                 kv_cache=None,
                                 finished=True,
+                                last_am_lp=hyp.last_am_lp,
+                                last_lm_lp=lm_lp,
                             )
                             candidates.append(fin)
-                            if verbose: print(f"fin: {fin}, lm_lp: {lm_lp}")
+                            # if verbose: print(f"fin: {fin}")
                             continue
 
                         token_text = self.lm.decode_token(tid)
@@ -185,8 +200,11 @@ class LLMGuidedDecoder:
                             score=new_score,
                             kv_cache=new_kv,
                             finished=False,
+                            last_am_lp=am_lp,
+                            last_lm_lp=lm_lp,
                         )
                         candidates.append(new_hyp) # line 10 in Algorithm 1
+                        if verbose and random.random() < 0.0001: print(f"new_hyp: {new_hyp}")
 
             if not candidates:
                 break
@@ -194,6 +212,8 @@ class LLMGuidedDecoder:
             # Keep top-B
             candidates.sort(key=lambda h: h.score, reverse=True)
             beam = candidates[:B]
+            # print the beam
+            if verbose: print(f"beam: {beam}")
 
             if verbose:
                 best = beam[0]
