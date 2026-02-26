@@ -5,6 +5,9 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass, field
+import os
+import csv
+import time
 import random
 import torch
 
@@ -120,7 +123,8 @@ class LLMGuidedDecoder:
         emissions = self.am.get_emissions(waveform)  # (T, C)
         T = emissions.shape[0]
 
-        beam: list[Hypothesis] = [Hypothesis()] # line 2 in Algorithm 1
+        beam: list[Hypothesis] = [Hypothesis()]  # line 2 in Algorithm 1
+        beam_log_rows: list[dict] = []
 
         for step in range(1, max_steps + 1):
             candidates: list[Hypothesis] = []  # line 4 in Algorithm 1
@@ -212,8 +216,26 @@ class LLMGuidedDecoder:
             # Keep top-B
             candidates.sort(key=lambda h: h.score, reverse=True)
             beam = candidates[:B]
+
+            # Log beam state for visualization (excluding kv_cache)
+            for rank, h in enumerate(beam):
+                beam_log_rows.append(
+                    {
+                        "step": step,
+                        "rank": rank,
+                        "token_ids": " ".join(map(str, h.token_ids)),
+                        "text": h.text,
+                        "last_frame": h.last_frame,
+                        "score": h.score,
+                        "finished": h.finished,
+                        "last_am_lp": h.last_am_lp,
+                        "last_lm_lp": h.last_lm_lp,
+                    }
+                )
+
             # print the beam
-            if verbose: print(f"beam: {beam}")
+            if verbose:
+                print(f"beam: {beam}")
 
             if verbose:
                 best = beam[0]
@@ -224,6 +246,34 @@ class LLMGuidedDecoder:
             if all(h.finished for h in beam):
                 print("All hypotheses finished. Exiting loop.")
                 break
+
+        # Save beam evolution to CSV (one file per decode) without kv_cache
+        if beam_log_rows:
+            try:
+                os.makedirs("beam_logs", exist_ok=True)
+                timestamp = time.strftime("%Y%m%d-%H%M%S")
+                rand_suffix = random.randint(0, 1_000_000)
+                csv_path = os.path.join(
+                    "beam_logs", f"beam_{timestamp}_{rand_suffix}.csv"
+                )
+                fieldnames = [
+                    "step",
+                    "rank",
+                    "token_ids",
+                    "text",
+                    "last_frame",
+                    "score",
+                    "finished",
+                    "last_am_lp",
+                    "last_lm_lp",
+                ]
+                with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(beam_log_rows)
+            except Exception as e:
+                if verbose:
+                    print(f"Warning: failed to write beam log CSV: {e}")
 
         beam.sort(key=lambda h: h.score, reverse=True)
         return beam[0]

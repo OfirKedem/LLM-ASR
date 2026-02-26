@@ -6,4 +6,5 @@ numpy
 soundfile
 jiwer
 matplotlib>=3.5
+Pillow
 wandb

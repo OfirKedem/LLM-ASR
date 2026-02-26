@@ -187,7 +187,7 @@ def test():
     print("=== run.py test ===\n")
 
     cfg = Config()
-    cfg.beam_width = 5
+    cfg.beam_width = 10
     cfg.top_k = 5000
     cfg.max_steps = 500
     cfg.alpha = 0.0999
