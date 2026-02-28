@@ -229,7 +229,7 @@ def test():
     processed, sr = preprocess(waveform=waveform, sr=sr, cfg=cfg, use_vad=True)
     print(f"Audio duration: {processed.shape[-1]/sr:.2f}s")
     start_time = time.time()
-    hyp = dec.decode(processed, verbose=False)
+    hyp = dec.decode(processed, verbose=True)
     end_time = time.time()
     decode_time = end_time - start_time
     print(f"Decoding took {decode_time:.2f} seconds.")
