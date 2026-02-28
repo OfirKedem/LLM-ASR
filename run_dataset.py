@@ -62,6 +62,7 @@ def load_dataset_samples(name: str, max_samples: int | None = None):
     ds = datasets.load_dataset(
         *load_args,
         split=cfg["split"],
+        streaming=True,
         **load_kw,
     )
     # Avoid torchcodec/FFmpeg by using decode=False and loading with soundfile
@@ -122,8 +123,8 @@ def run_evaluation(
         return
 
     am = AcousticModel(cfg.am_model_name, cfg.device)
-    lm = LanguageModel(cfg.lm_model_name, cfg.device)
-    dec = LLMGuidedDecoder(am, lm, cfg)
+    lm = LanguageModel(cfg.lm_model_name, cfg.device, remove_space=True)
+    dec = LLMGuidedDecoder(am, lm, cfg, top_k_from_text=True)
 
     refs, hyps = [], []
     total_time = 0.0
@@ -164,8 +165,8 @@ def main():
         help="Dataset name (librispeech or tedlium)",
     )
     parser.add_argument("--max-samples", type=int, default=None, help="Limit samples")
-    parser.add_argument("--beam", type=int, default=2, help="Beam width")
-    parser.add_argument("--topk", type=int, default=100, help="Top-K candidates")
+    parser.add_argument("--beam", type=int, default=5, help="Beam width")
+    parser.add_argument("--topk", type=int, default=5000, help="Top-K candidates")
     parser.add_argument("--paper", action="store_true", help="Use paper settings (beam=5, topk=5000) for reproduction")
     parser.add_argument("--use-vad", action="store_true", help="Use Silero VAD")
     parser.add_argument("--verbose", action="store_true")

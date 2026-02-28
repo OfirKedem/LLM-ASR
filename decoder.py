@@ -172,7 +172,6 @@ class LLMGuidedDecoder:
             candidates: list[Hypothesis] = []  # line 4 in Algorithm 1
 
             # Group hypotheses by prefix to avoid redundant LLM calls
-            # TODO: figure out later 
             prefix_groups: dict[tuple, list[Hypothesis]] = {}
             for hyp in beam:
                 if hyp.finished:
@@ -188,7 +187,7 @@ class LLMGuidedDecoder:
                     tok_ids, lm_lps = self.lm.top_k_from_text(rep.text, K)
                     new_kv = None
                 else:
-                    tok_ids, lm_lps, new_kv = self.lm.top_k(rep.token_ids, K, None) # rep.kv_cache)
+                    tok_ids, lm_lps, new_kv = self.lm.top_k(rep.token_ids, K, None)
 
                 # Check EOS probability for stopping criterion (i)
                 eos_lp = float("-inf")
@@ -201,7 +200,7 @@ class LLMGuidedDecoder:
                 best_cand_lm_lp = lm_lps[0].item() if len(lm_lps) > 0 else float("-inf")
 
                 for hyp in hyps:
-                    if self._is_finished(hyp, emissions, eos_lp, best_cand_lm_lp): #TODO: understand this
+                    if self._is_finished(hyp, emissions, eos_lp, best_cand_lm_lp):
                         hyp.finished = True
                         candidates.append(hyp)
                         continue

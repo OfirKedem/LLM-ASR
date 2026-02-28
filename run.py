@@ -216,8 +216,8 @@ def test():
     cfg.beam_width = 10
     cfg.top_k = 5000
     cfg.max_steps = 500
-    cfg.alpha = 0.0999
-    cfg.beta = 1
+    # cfg.alpha = 0.0999
+    # cfg.beta = 1
 
     am = AcousticModel(cfg.am_model_name, cfg.device, normalize_tokens=None)
     lm = LanguageModel(cfg.lm_model_name, cfg.device, remove_space=True)
@@ -235,23 +235,7 @@ def test():
     print(f"\nREF: {ref_n}")
     print(f"HYP: {hyp_n}")
     print(f"WER: {w:.2%}  CER: {c:.2%}\n")
-
-    # # 2. Multiple utterances
-    # print("--- Batch (3 utterances) ---")
-    # samples = load_chapter_samples(chapter="121123", max_samples=3)
-    # refs, hyps_text = [], []
-    # for i, (wav, sr_i, ref_i) in enumerate(samples):
-    #     proc, _ = preprocess(waveform=wav, sr=sr_i, cfg=cfg, use_vad=False)
-    #     h = dec.decode(proc)
-    #     refs.append(ref_i)
-    #     hyps_text.append(h.text)
-    #     print(f"  [{i}] REF: {normalize_for_eval(ref_i)}")
-    #     print(f"      HYP: {normalize_for_eval(h.text)}")
-    #     print(f"      WER: {compute_wer(ref_i, h.text):.2%}")
-
-    # agg = evaluate_batch(refs, hyps_text)
-    # print(f"\nAggregate: WER={agg['wer']:.2%}  CER={agg['cer']:.2%}")
-    print("\nDone.")
+print("\nDone.")
 
 
 if __name__ == "__main__":
