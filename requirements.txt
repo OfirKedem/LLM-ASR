@@ -3,6 +3,7 @@ torchaudio>=2.0
 transformers>=4.30
 datasets
 numpy
+numba>=0.58
 soundfile
 jiwer
 matplotlib>=3.5

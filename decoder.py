@@ -199,13 +199,24 @@ class LLMGuidedDecoder:
 
                 best_cand_lm_lp = lm_lps[0].item() if len(lm_lps) > 0 else float("-inf")
 
+                tok_ids_list = tok_ids.tolist()
+                lm_lps_list = lm_lps.tolist()
+                token_texts = [self.lm.decode_token(tid) for tid in tok_ids_list]
+
                 for hyp in hyps:
                     if self._is_finished(hyp, emissions, eos_lp, best_cand_lm_lp):
                         hyp.finished = True
                         candidates.append(hyp)
                         continue
 
-                    for tid, lm_lp in zip(tok_ids.tolist(), lm_lps.tolist()):
+                    # line 8 in Algorithm 1 – batch alignment for all top_k tokens (Numba-accelerated)
+                    align_results = self.am.align_tokens_batch(
+                        token_texts, hyp.last_frame, emissions, max_la
+                    )
+
+                    for (tid, lm_lp), (end_frame, am_lp) in zip(
+                        zip(tok_ids_list, lm_lps_list), align_results
+                    ):
                         if tid == self.lm.eos_token_id:
                             if len(hyp.token_ids) == 0:
                                 continue
@@ -220,14 +231,9 @@ class LLMGuidedDecoder:
                                 last_lm_lp=lm_lp,
                             )
                             candidates.append(fin)
-                            # if verbose: print(f"fin: {fin}")
                             continue
 
                         token_text = self.lm.decode_token(tid)
-                        end_frame, am_lp = self.am.align_token(
-                            token_text, hyp.last_frame, emissions, max_la
-                        ) # line 8 in Algorithm 1
-
                         char_count = len(
                             self.am.token_to_char_indices(token_text)
                         )
@@ -235,19 +241,19 @@ class LLMGuidedDecoder:
                             token_text, am_lp, char_count
                         ):
                             continue
-                        
-                        new_score = hyp.score + am_lp + alpha * lm_lp + beta # line 9 in Algorithm 1
+
+                        new_score = hyp.score + am_lp + alpha * lm_lp + beta  # line 9 in Algorithm 1
                         new_hyp = Hypothesis(
                             token_ids=hyp.token_ids + [tid],
                             text=hyp.text + token_text,
-                            last_frame=end_frame+1,
+                            last_frame=end_frame + 1,
                             score=new_score,
                             kv_cache=new_kv,
                             finished=False,
                             last_am_lp=am_lp,
                             last_lm_lp=lm_lp,
                         )
-                        candidates.append(new_hyp) # line 10 in Algorithm 1
+                        candidates.append(new_hyp)  # line 10 in Algorithm 1
 
             if not candidates:
                 break

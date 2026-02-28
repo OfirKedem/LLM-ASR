@@ -209,11 +209,12 @@ def main():
 # ------------------------------------------------------------------
 def test():
     from test_utils import load_test_sample, load_chapter_samples
+    import time
 
     print("=== run.py test ===\n")
 
     cfg = Config()
-    cfg.beam_width = 10
+    cfg.beam_width = 5
     cfg.top_k = 5000
     cfg.max_steps = 500
     # cfg.alpha = 0.0999
@@ -221,21 +222,26 @@ def test():
 
     am = AcousticModel(cfg.am_model_name, cfg.device, normalize_tokens=None)
     lm = LanguageModel(cfg.lm_model_name, cfg.device, remove_space=True)
-    dec = LLMGuidedDecoder(am, lm, cfg, top_k_from_text=True)
+    dec = LLMGuidedDecoder(am, lm, cfg, top_k_from_text=False)
 
     # 1. Single file
-    waveform, sr, ref = load_test_sample(folder="84", chapter="121123", idx=1)
+    waveform, sr, ref = load_test_sample(folder="84", chapter="121123", idx=2)
     processed, sr = preprocess(waveform=waveform, sr=sr, cfg=cfg, use_vad=True)
     print(f"Audio duration: {processed.shape[-1]/sr:.2f}s")
-    hyp = dec.decode(processed, verbose=True)
+    start_time = time.time()
+    hyp = dec.decode(processed, verbose=False)
+    end_time = time.time()
+    decode_time = end_time - start_time
+    print(f"Decoding took {decode_time:.2f} seconds.")
+    print(f"Hypothesis tokens length: {len(hyp.token_ids)}")
     ref_n = normalize_for_eval(ref)
-    hyp_n = normalize_for_eval(hyp.text)
+    hyp.text = normalize_for_eval(hyp.text)
     w = compute_wer(ref, hyp.text)
     c = compute_cer(ref, hyp.text)
     print(f"\nREF: {ref_n}")
-    print(f"HYP: {hyp_n}")
+    print(f"HYP: {hyp.text}")
     print(f"WER: {w:.2%}  CER: {c:.2%}\n")
-print("\nDone.")
+    print("\nDone.")
 
 
 if __name__ == "__main__":

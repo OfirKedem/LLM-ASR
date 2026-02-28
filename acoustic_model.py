@@ -6,6 +6,90 @@ from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
 from config import Config
 
+try:
+    import numba
+    _HAS_NUMBA = True
+except ImportError:
+    _HAS_NUMBA = False
+
+
+def _viterbi_ctc(em: np.ndarray, labels: np.ndarray) -> tuple[float, int]:
+    """CTC Viterbi DP: best log-prob and best end frame index.
+
+    em: (T_local, C) float64 emission log-probs
+    labels: (S,) int32 CTC expanded labels (blank, c1, blank, c2, ..., blank)
+    Returns: (best_log_prob, best_t) where best_t is 0-based frame index
+    """
+    if _HAS_NUMBA:
+        return _viterbi_ctc_numba(em, labels)
+    return _viterbi_ctc_python(em, labels)
+
+
+if _HAS_NUMBA:
+
+    @numba.jit(nopython=True, cache=True)
+    def _viterbi_ctc_numba(em: np.ndarray, labels: np.ndarray) -> tuple[float, int]:
+        T_local, C = em.shape
+        S = len(labels)
+        NEG_INF = -1e9
+
+        dp = np.full((T_local, S), NEG_INF, dtype=np.float64)
+        dp[0, 0] = em[0, labels[0]]
+        if S > 1:
+            dp[0, 1] = em[0, labels[1]]
+
+        for t in range(1, T_local):
+            for s in range(S):
+                best = dp[t - 1, s]
+                if s >= 1:
+                    best = max(best, dp[t - 1, s - 1])
+                if s >= 2 and labels[s] != labels[s - 2]:
+                    best = max(best, dp[t - 1, s - 2])
+                dp[t, s] = best + em[t, labels[s]]
+
+        U = (S - 1) // 2
+        min_frames = U
+        best_log_prob = NEG_INF
+        best_t = T_local - 1
+        for t in range(min_frames - 1, T_local):
+            cand = max(dp[t, S - 1], dp[t, S - 2])
+            if cand > best_log_prob:
+                best_log_prob = cand
+                best_t = t
+        return float(best_log_prob), int(best_t)
+
+
+def _viterbi_ctc_python(em: np.ndarray, labels: np.ndarray) -> tuple[float, int]:
+    """Pure Python fallback when Numba is not available."""
+    T_local, C = em.shape
+    S = len(labels)
+    NEG_INF = -1e9
+
+    dp = np.full((T_local, S), NEG_INF, dtype=np.float64)
+    dp[0, 0] = em[0, labels[0]]
+    if S > 1:
+        dp[0, 1] = em[0, labels[1]]
+
+    for t in range(1, T_local):
+        for s in range(S):
+            best = dp[t - 1, s]
+            if s >= 1:
+                best = max(best, dp[t - 1, s - 1])
+            if s >= 2 and labels[s] != labels[s - 2]:
+                best = max(best, dp[t - 1, s - 2])
+            dp[t, s] = best + em[t, labels[s]]
+
+    U = (S - 1) // 2
+    min_frames = U
+    best_log_prob = NEG_INF
+    best_t = T_local - 1
+    for t in range(min_frames - 1, T_local):
+        cand = max(dp[t, S - 1], dp[t, S - 2])
+        if cand > best_log_prob:
+            best_log_prob = cand
+            best_t = t
+    return float(best_log_prob), int(best_t)
+
 
 class AcousticModel:
     def __init__(self, 
@@ -113,51 +197,104 @@ class AcousticModel:
             return start_frame, float("-inf")
 
         # Build CTC expanded label sequence: blank c1 blank c2 ... cU blank
-        S = 2 * U + 1
-        labels = []
-        for c in char_ids:
-            labels.append(self.blank_idx)
-            labels.append(c)
-        labels.append(self.blank_idx)
+        labels = np.empty(2 * U + 1, dtype=np.int32)
+        for i, c in enumerate(char_ids):
+            labels[2 * i] = self.blank_idx
+            labels[2 * i + 1] = c
+        labels[-1] = self.blank_idx
 
-        NEG_INF = -1e9
-        # dp[t, s] = best log-prob ending at local time t in state s
-        dp = np.full((T_local, S), NEG_INF, dtype=np.float64)
         em = emissions[start_frame:end_limit].numpy().astype(np.float64)
-
-        # Initialise: can start in state 0 (blank) or state 1 (first char)
-        dp[0, 0] = em[0, labels[0]]
-        if S > 1:
-            dp[0, 1] = em[0, labels[1]]
-
-        for t in range(1, T_local):
-            for s in range(S):
-                best = dp[t - 1, s]                          # stay
-                if s >= 1:
-                    best = max(best, dp[t - 1, s - 1])       # from prev state
-                if s >= 2 and labels[s] != labels[s - 2]:
-                    best = max(best, dp[t - 1, s - 2])       # skip blank
-                dp[t, s] = best + em[t, labels[s]]
-
-        # Best ending: must finish in last char (S-2) or trailing blank (S-1)
-        best_log_prob = NEG_INF
-        best_t = T_local - 1
-        # Need at least U frames to represent U characters
-        min_frames = U
-        for t in range(min_frames - 1, T_local):
-            cand = max(dp[t, S - 1], dp[t, S - 2])
-            if cand > best_log_prob:
-                best_log_prob = cand
-                best_t = t
-
+        best_log_prob, best_t = _viterbi_ctc(em, labels)
         end_frame = start_frame + best_t + 1
         
-        if self.normalize_tokens is not None: # midigates bias towards shorter tokens
-            # U - number of characters in the token
-            # self.normalize_tokens - exponent factor for normalization
-            best_log_prob = best_log_prob / (U*self.normalize_tokens)
-        
+        if self.normalize_tokens is not None:  # mitigates bias towards shorter tokens
+            best_log_prob = best_log_prob / (U * self.normalize_tokens)
+
         return end_frame, float(best_log_prob)
+
+    def align_tokens_batch(
+        self,
+        token_texts: list[str],
+        start_frame: int,
+        emissions: torch.Tensor,
+        max_lookahead: int = 75,
+    ) -> list[tuple[int, float]]:
+        """CTC Viterbi alignment for multiple tokens at once (Numba-accelerated).
+
+        Returns list of (end_frame, log_prob) for each token_text.
+        Empty/invalid tokens get (start_frame, 0.0).
+        """
+        if not token_texts:
+            return []
+
+        T_total = emissions.shape[0]
+        end_limit = min(start_frame + max_lookahead, T_total)
+        T_local = end_limit - start_frame
+        if T_local < 1:
+            return [(start_frame, float("-inf"))] * len(token_texts)
+
+        em = emissions[start_frame:end_limit].numpy().astype(np.float64)
+        results: list[tuple[int, float]] = []
+
+        if _HAS_NUMBA:
+            labels_list = []
+            valid_indices: list[int] = []
+            for token_text in token_texts:
+                char_ids = self.token_to_char_indices(token_text)
+                if not char_ids:
+                    results.append((start_frame, 0.0))
+                    continue
+                U = len(char_ids)
+                labels = np.empty(2 * U + 1, dtype=np.int32)
+                for i, c in enumerate(char_ids):
+                    labels[2 * i] = self.blank_idx
+                    labels[2 * i + 1] = c
+                labels[-1] = self.blank_idx
+                labels_list.append(labels)
+                valid_indices.append(len(results))
+                results.append((0, 0.0))  # placeholder
+
+            if labels_list:
+                from numba.typed import List as NumbaList
+
+                labels_numba = NumbaList()
+                for lbl in labels_list:
+                    labels_numba.append(lbl)
+
+                best_lps, best_ts = _viterbi_ctc_batch_numba(em, labels_numba)
+                for i in range(len(labels_list)):
+                    idx = valid_indices[i]
+                    lp = float(best_lps[i])
+                    bt = int(best_ts[i])
+                    end_frame = start_frame + bt + 1
+                    U = (len(labels_list[i]) - 1) // 2
+                    if self.normalize_tokens is not None:
+                        lp = lp / (U * self.normalize_tokens)
+                    results[idx] = (end_frame, lp)
+        else:
+            for token_text in token_texts:
+                ef, lp = self.align_token(
+                    token_text, start_frame, emissions, max_lookahead
+                )
+                results.append((ef, lp))
+
+        return results
+
+
+if _HAS_NUMBA:
+
+    @numba.jit(nopython=True, parallel=True, cache=True)
+    def _viterbi_ctc_batch_numba(em: np.ndarray, labels_list) -> tuple[np.ndarray, np.ndarray]:
+        """Run Viterbi for multiple label sequences in parallel."""
+        n = len(labels_list)
+        best_log_probs = np.empty(n, dtype=np.float64)
+        best_ts = np.empty(n, dtype=np.int64)
+        for i in numba.prange(n):
+            labels = labels_list[i]
+            best_lp, best_t = _viterbi_ctc_numba(em, labels)
+            best_log_probs[i] = best_lp
+            best_ts[i] = best_t
+        return best_log_probs, best_ts
 
 
 # ------------------------------------------------------------------
