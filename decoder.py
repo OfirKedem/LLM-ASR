@@ -246,7 +246,10 @@ class LLMGuidedDecoder:
                         new_hyp = Hypothesis(
                             token_ids=hyp.token_ids + [tid],
                             text=hyp.text + token_text,
-                            last_frame=end_frame + 1,
+                            # NOTE: align_tokens_batch/align_token returns end_frame as an *exclusive* end
+                            # (i.e., one past the last consumed frame). Be careful not to add +1 again here,
+                            # otherwise decoding will skip a frame at each step (off-by-one).
+                            last_frame=end_frame,
                             score=new_score,
                             kv_cache=new_kv,
                             finished=False,
