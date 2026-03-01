@@ -65,6 +65,9 @@ class LanguageModel:
             input_ids = torch.tensor([[prefix_ids[-1]]], device=self.device)
         else:
             if len(prefix_ids) == 0:
+                # NOTE: GPT-2 has no dedicated BOS token. For an empty prefix we currently feed EOS as a
+                # pseudo-BOS to obtain a next-token distribution. This is an implementation choice and may
+                # bias the initial distribution; the paper does not explicitly prescribe EOS-as-BOS.
                 input_ids = torch.tensor([[self.eos_token_id]], device=self.device)
             else:
                 input_ids = torch.tensor([prefix_ids], device=self.device)
